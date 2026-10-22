@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hattie — the tablet app.
+
+  THREE PERMISSIONS MATTER, and they are the whole of why this is an app
+  rather than a browser page:
+
+    * RECORD_AUDIO — a browser only opens a microphone on a secure origin
+      (https). An app is not held to that, so the tablet can hear the room
+      over plain http on the family's own network, with no certificate,
+      no domain and no DNS to set up in anyone's house.
+    * FOREGROUND_SERVICE + FOREGROUND_SERVICE_MICROPHONE — a microphone
+      held by a background service: Android insists it is visible, which is
+      right, and the notification is that promise kept.
+    * RECEIVE_BOOT_COMPLETED — it comes back by itself after a power cut,
+      which is the difference between an appliance and a gadget.
+
+  usesCleartextTraffic is on because the house is http on the LAN. Nothing
+  in this app talks to anything but the box it was paired with; there is no
+  analytics, no update check to a third party and no account anywhere.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- A tablet with no microphone should still install, and say so, rather
+         than be filtered out of the shop by the store. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- allowBackup is off because a device token must never be swept into a
+         cloud backup: this tablet's credential belongs to this tablet. -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- MAIN + HOME: it can be set as the home app, so a tablet in a
+             kitchen has nothing on it but her. LAUNCHER is kept as well so
+             it can be opened by hand while it is being set up. -->
+        <!-- turnScreenOn + showWhenLocked: a tablet that has been asleep is
+             her again without anybody unlocking anything (API 27+; the same
+             is asked for in code, so an older Android still behaves). -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".EarService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Some tablets (and the HTC/LG builds in particular) send
+                     this instead, or as well. Harmless where it never comes. -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
