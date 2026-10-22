@@ -1,0 +1,66 @@
+# Hattie — build the tablet app.
+#
+# WHY THIS EXISTS: the app cannot be built on the box (no Android SDK there)
+# and Simon should not have to install a few GB of Android Studio to get an
+# APK. So GitHub builds it: push this folder as a repository, and every push
+# produces a finished, installable APK you can download from the run.
+#
+# The APK it makes is a DEBUG build, which Android signs automatically - so
+# it installs on a tablet straight away with nothing to set up. For a
+# release build with your own key, see the note at the bottom.
+name: Build the Hattie APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: The Android tools
+        uses: android-actions/setup-android@v3
+
+      - name: The one SDK version this project uses
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # No ./gradlew in this folder on purpose: a wrapper is a binary blob in
+      # git, and the runner installs Gradle itself.
+      - name: Build
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Hand back the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hattie-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+# ── For a release build, when you are ready to sell ────────────────────
+#
+# 1. make a key once, and keep it somewhere you will never lose it:
+#      keytool -genkey -v -keystore hattie.jks -alias hattie \
+#              -keyalg RSA -keysize 2048 -validity 10000
+# 2. put it in the repository's secrets as base64:
+#      base64 -w0 hattie.jks        ->  HATTIE_KEYSTORE
+#    and add HATTIE_KEYSTORE_PASSWORD, HATTIE_KEY_ALIAS, HATTIE_KEY_PASSWORD.
+# 3. add to app/build.gradle.kts a signingConfigs.release reading those from
+#    environment variables, run `gradle assembleRelease` here instead, and
+#    upload app/build/outputs/apk/release/app-release.apk.
+#
+# LOSING THAT KEY MEANS YOU CAN NEVER UPDATE AN INSTALLED COPY. Keep a copy
+# of it somewhere that is not this machine, and not only in GitHub secrets.
