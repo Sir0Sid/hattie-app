@@ -122,7 +122,10 @@ class EarService : Service() {
             manager.createNotificationChannel(channel)
         }
         val notification: Notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.app_name))
+            /* The version is in the title ON PURPOSE: "is this the build I
+               think it is?" has to be answerable on the tablet, in one look,
+               without a cable and without guessing. */
+            .setContentTitle(getString(R.string.app_name) + " " + appVersion())
             .setContentText(getString(R.string.listening))
             .setSmallIcon(R.drawable.ic_ear)
             .setOngoing(true)
@@ -239,6 +242,11 @@ class EarService : Service() {
      * hear (no whisper engine). So a refusal is reported in the notification,
      * once per quarter of a minute rather than at every sound in the room.
      */
+    /** Which build is this? Shown in the notification. */
+    private fun appVersion(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+    }.getOrDefault("?")
+
     private var lastComplaint = 0L
 
     private fun complain(text: String) {

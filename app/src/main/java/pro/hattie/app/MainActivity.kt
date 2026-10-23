@@ -61,6 +61,10 @@ class MainActivity : Activity() {
         if (house.configured) showHouse() else showSetup()
     }
 
+    private fun appVersion(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+    }.getOrDefault("?")
+
     /** A kitchen tablet is plugged in; the screen dimming is fine, sleeping is not. */
     private fun keepAwake() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -79,6 +83,17 @@ class MainActivity : Activity() {
     override fun onPause() {
         web?.onPause()
         super.onPause()
+    }
+
+    /**
+     * The bars come back every time you leave her and return - Android is
+     * being helpful, and it is wrong for a tablet on a wall. Re-hiding on
+     * RESUME is not enough: the window is not attached yet when that runs,
+     * so it is done again here, when the window really has the focus.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && house.configured) goFullScreen()
     }
 
     override fun onBackPressed() {
@@ -106,6 +121,7 @@ class MainActivity : Activity() {
         }
 
         column.addView(title(getString(R.string.setup_title)))
+        column.addView(hint("Hattie " + appVersion()))
         column.addView(hint(getString(R.string.setup_what)))
 
         val where = EditText(this).apply {

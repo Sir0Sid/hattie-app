@@ -14,8 +14,11 @@ android {
          * tablets Simon ships are newer than that. */
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        /* BUMPED ON EVERY BUILD, and shown on the tablet: a notification
+         * that cannot tell you which build it is has cost us a round trip
+         * already, because the download page can be a version behind. */
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {

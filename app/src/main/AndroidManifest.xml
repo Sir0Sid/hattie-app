@@ -38,7 +38,7 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:allowBackup="false"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
 
         <!-- MAIN + HOME: it can be set as the home app, so a tablet in a
              kitchen has nothing on it but her. LAUNCHER is kept as well so
