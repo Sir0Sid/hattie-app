@@ -1,11 +1,15 @@
 package pro.hattie.app
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -65,6 +69,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         web?.onResume()
+        if (house.configured) goFullScreen()   /* a swipe can bring the bars back */
         if (house.configured) {
             EarService.start(this)
             rememberThisDevice()      /* until somebody has signed in on it */
@@ -193,6 +198,7 @@ class MainActivity : Activity() {
         web = view
         setContentView(view)
         goFullScreen()
+        pinToThisApp()
         askForMicrophone()
         rememberThisDevice()
     }
@@ -217,7 +223,27 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    /**
+     * Her, and nothing else on the screen.
+     *
+     * TWO GENERATIONS OF API, because the old flags are deprecated from
+     * Android 11 and are only half-honoured: the status bar went, the
+     * navigation bar came back on a swipe - which is Android being sensible,
+     * not a fault. From 11 the supported way is the window insets controller.
+     * Either way the bars are TRANSIENT: swiping brings them back for a
+     * moment, which is the escape a tablet needs while it is being set up.
+     * Locking somebody IN is pinToThisApp() below.
+     */
     private fun goFullScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let { bars ->
+                bars.hide(WindowInsets.Type.systemBars())
+                bars.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+            return
+        }
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -227,6 +253,26 @@ class MainActivity : Activity() {
                 or View.SYSTEM_UI_FLAG_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             )
+    }
+
+    /**
+     * PIN HER TO THE SCREEN, so nobody wanders off into Android by accident.
+     *
+     * This is Android's own "lock task mode", and it needs ONE of two things
+     * to be true: screen pinning switched on in Settings (once per tablet),
+     * or this app being the device owner (what a shipped appliance should be).
+     * Where neither is true yet, this does nothing at all rather than asking
+     * again at every start - and the guide says how to switch it on.
+     *
+     * THE WAY OUT is Android's, not ours: hold Back and Recents together.
+     * A kiosk that cannot be left is a kiosk you cannot fix.
+     */
+    private fun pinToThisApp() {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val already = am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+        if (!already && am.isLockTaskPermitted(packageName)) {
+            runCatching { startLockTask() }
+        }
     }
 
     /**

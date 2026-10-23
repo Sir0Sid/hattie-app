@@ -232,6 +232,22 @@ class EarService : Service() {
         return peak
     }
 
+    /**
+     * SAY WHEN SOMETHING IS WRONG. A listening appliance that goes quiet is
+     * indistinguishable from a broken one, and the two commonest failures are
+     * both fixable in a minute: the box cannot be reached, or her ears cannot
+     * hear (no whisper engine). So a refusal is reported in the notification,
+     * once per quarter of a minute rather than at every sound in the room.
+     */
+    private var lastComplaint = 0L
+
+    private fun complain(text: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastComplaint < 15000) return
+        lastComplaint = now
+        notice(text)
+    }
+
     /** One burst to the box, and her answer out loud. */
     private fun sendBurst(pcm: ShortArray) {
         if (pcm.isEmpty()) return
@@ -240,8 +256,15 @@ class EarService : Service() {
          * and cost a couple of seconds of the box's two cores. */
         if (pcm.size < SAMPLE_RATE / 4) return
         val wav = wavFrom(pcm)
-        val answer = Box.room(house, wav) ?: return
-        if (!answer.optBoolean("success", false)) return       // refused: nothing to say
+        val answer = Box.room(house, wav)
+        if (answer == null) {
+            complain("I could not reach the house. Is the box on this network?")
+            return
+        }
+        if (!answer.optBoolean("success", false)) {
+            complain(answer.optString("error", "The house refused that."))
+            return
+        }
         if (!answer.optBoolean("woken", false)) return          // not for her: stay quiet
         val say = answer.optString("say", "")
         if (say.isNotEmpty()) speak(say)
