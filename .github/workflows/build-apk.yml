@@ -1,0 +1,139 @@
+# Hattie — build the tablet app.
+#
+# The runner images already have an Android SDK, so this does NOT depend on a
+# third-party action to install one. (The first run failed at exactly that
+# step, before a single line of the app was compiled.)
+name: Build the Hattie APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Say where the SDK is, and prove what is in it. If the image has none
+      # (unlikely), the command-line tools are fetched instead.
+      - name: Find the Android SDK
+        run: |
+          set -e
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            for d in "$HOME/android-sdk" /usr/local/lib/android/sdk; do
+              if [ -d "$d" ]; then ANDROID_HOME="$d"; break; fi
+            done
+          fi
+          if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
+            echo "No Android SDK here - fetching the command-line tools."
+            ANDROID_HOME=/usr/local/lib/android/sdk
+            sudo mkdir -p "$(dirname "$ANDROID_HOME")"
+            curl -sSLo /tmp/cmdline.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdline.zip -d /tmp/cmdline
+            sudo mv /tmp/cmdline/cmdline-tools "$ANDROID_HOME"
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "Using SDK at $ANDROID_HOME"
+          ls "$ANDROID_HOME" || true
+          echo "platforms:"; ls "$ANDROID_HOME/platforms" 2>/dev/null || true
+          echo "build-tools:"; ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
+
+      - name: Accept the licences, and add the one platform this project wants
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)"
+          echo "sdkmanager: ${SDKMANAGER:-none found}"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 \
+              || echo "sdkmanager could not add those; Gradle will fetch what it needs"
+          fi
+
+      # Belt and braces: if a piece is still missing, Gradle downloads it.
+      - name: Let Gradle fetch anything the SDK is missing
+        run: echo "android.builder.sdkDownload=true" >> gradle.properties
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Hand back the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hattie-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # ── A PUBLISHED DOWNLOAD, from a tag ─────────────────────────────────
+  # Push a tag (v1.0, v1.1 …) and this attaches the APK and a small version
+  # file to a GitHub Release. Both get STABLE names, so two URLs never change:
+  #
+  #   https://github.com/Sir0Sid/hattie-app/releases/latest/download/hattie.apk
+  #   https://github.com/Sir0Sid/hattie-app/releases/latest/download/version.json
+  #
+  # The first is what you would point https://app.disyard.com at; the second
+  # is what a shipped tablet will check to know whether it is out of date.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Needed to read the version out of the build file, which is the truth
+      # about what was built rather than the tag typed by hand.
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: The APK this run made
+        uses: actions/download-artifact@v4
+        with:
+          name: hattie-apk
+
+      - name: Name it, hash it, and write the version file
+        run: |
+          set -e
+          mv app-debug.apk hattie.apk
+          SUM=$(sha256sum hattie.apk | cut -d' ' -f1)
+          CODE=$(grep -oE 'versionCode = [0-9]+' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')
+          NAME=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | head -1 | cut -d'"' -f2)
+          printf '{"version":"%s","versionCode":%s,"apk":"hattie.apk","sha256":"%s","when":"%s"}\n' \
+            "$NAME" "$CODE" "$SUM" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > version.json
+          echo "SHA256=$SUM" >> "$GITHUB_ENV"
+          cat version.json
+
+      # gh is on the runner: no third-party release action to depend on.
+      - name: Publish the release (or add to it, if it already exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          NOTES="Hattie ${GITHUB_REF_NAME}. Install with hattie.apk. SHA-256: ${SHA256}"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" hattie.apk version.json --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" --title "Hattie ${GITHUB_REF_NAME}" \
+              --notes "$NOTES" hattie.apk version.json
+          fi
+
+# ── For a release build, when you are ready to sell ────────────────────
+# 1. keytool -genkey -v -keystore hattie.jks -alias hattie \
+#            -keyalg RSA -keysize 2048 -validity 10000
+# 2. put base64 of hattie.jks in the repository secrets as HATTIE_KEYSTORE,
+#    plus HATTIE_KEYSTORE_PASSWORD, HATTIE_KEY_ALIAS, HATTIE_KEY_PASSWORD.
+# 3. add a signingConfigs.release to app/build.gradle.kts reading those from
+#    environment variables and run `gradle assembleRelease` here.
+# LOSING THAT KEY MEANS YOU CAN NEVER UPDATE AN INSTALLED COPY.
