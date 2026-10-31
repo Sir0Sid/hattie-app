@@ -17,8 +17,8 @@ android {
         /* BUMPED ON EVERY BUILD, and shown on the tablet: a notification
          * that cannot tell you which build it is has cost us a round trip
          * already, because the download page can be a version behind. */
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
     }
 
     buildTypes {
@@ -39,4 +39,16 @@ android {
     }
 }
 
-/* No dependencies, on purpose. See settings.gradle.kts. */
+dependencies {
+    /* Her NAME, heard on the tablet before anything is sent (Keyword.kt).
+     * Vosk is offline, Apache-2.0, needs no account and no key, and in
+     * grammar mode can only ever return one of the three phrases it is
+     * given - which is exactly the property this needs: a television
+     * cannot be "transcribed" into a wake word by accident.
+     *
+     * This is the first dependency this app has ever had, and it is here
+     * because there is no way to hear a word on a device without one. */
+    implementation("com.alphacephei:vosk-android:0.3.47@aar")
+    /* Vosk's native side is reached through JNA. */
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
+}

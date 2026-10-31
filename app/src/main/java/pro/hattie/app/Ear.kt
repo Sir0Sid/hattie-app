@@ -70,12 +70,12 @@ class EarService : Service() {
          */
         const val PRE_ROLL_SECONDS = 1.5
 
-        /* Six seconds, not twelve. A request to her is a sentence; twelve
-         * seconds only ever meant a television programme transcribed in
-         * lumps (the same log: a 387 KB burst beginning "Now look, we have a
-         * staff photograph arranged for 6 o'clock…"). Short costs one
-         * whisper run instead of three, and gives her less to mis-hear. */
-        const val MAX_SECONDS = 6.0
+        /* Three and a half seconds, not six. Measured on the real box on
+         * 31 Oct 2026: transcription costs about two seconds of CPU for
+         * every second of audio on that machine, so the length of the burst
+         * IS the delay. A request to her is one short sentence, and the
+         * pre-roll above already puts the front of it in. */
+        const val MAX_SECONDS = 3.5
 
         const val SAMPLE_RATE = 16000
         const val PRE_ROLL = (PRE_ROLL_SECONDS * SAMPLE_RATE).toInt()
@@ -106,6 +106,11 @@ class EarService : Service() {
         super.onCreate()
         house = House(this)
         startForegroundCompat()
+        /* Her name is checked on this tablet before anything is sent. It
+         * takes a few seconds to unpack and open the model the first time;
+         * until then every burst goes to the box exactly as before, so a
+         * failure here costs the saving and nothing else. */
+        Thread { Keyword.prepare(applicationContext) }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -317,6 +322,11 @@ class EarService : Service() {
          * rewritten (see Box.room). A burst costs whatever a transcription
          * costs, and on a weak CPU that is a lot. */
         if (pcm.size < SAMPLE_RATE / 4) return
+        /* IS HER NAME IN IT? If the model is loaded, a burst without her
+         * name never leaves this tablet: no network, no transcription, no
+         * cost, and no chance of the box answering the television. Not
+         * ready means not filtering - see Keyword.containsName. */
+        if (Keyword.ready && !Keyword.containsName(pcm)) return
         val wav = wavFrom(pcm)
         val answer = Box.room(house, wav)
         if (answer == null) {
