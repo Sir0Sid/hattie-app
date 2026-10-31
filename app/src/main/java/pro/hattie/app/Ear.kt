@@ -51,9 +51,34 @@ class EarService : Service() {
         const val QUIET = 0.030
         const val FRAMES_TO_START = 3
         const val FRAMES_TO_END = 8
-        const val MAX_SECONDS = 12.0
+
+        /* HOW MUCH AUDIO GOES BACK BEFORE THE NOISE THAT WOKE US.
+         *
+         * This is the fix for the fault found on a real tablet on
+         * 31 Oct 2026. The ear used to start recording at the moment the
+         * room got loud, which loses the beginning of the sentence - and the
+         * beginning is her NAME, usually the shortest and quietest word in
+         * it. The box's own log caught it exactly:
+         *
+         *   "what time is it?"   woken no
+         *   "what is the time?"  woken no
+         *
+         * He had said "Hattie" first, every time. It was recorded after she
+         * had already decided whether to listen. So the last second and a
+         * half of the room is kept in a ring buffer and prepended when a
+         * burst begins: the words before the noise are part of the burst.
+         */
+        const val PRE_ROLL_SECONDS = 1.5
+
+        /* Six seconds, not twelve. A request to her is a sentence; twelve
+         * seconds only ever meant a television programme transcribed in
+         * lumps (the same log: a 387 KB burst beginning "Now look, we have a
+         * staff photograph arranged for 6 o'clock…"). Short costs one
+         * whisper run instead of three, and gives her less to mis-hear. */
+        const val MAX_SECONDS = 6.0
 
         const val SAMPLE_RATE = 16000
+        const val PRE_ROLL = (PRE_ROLL_SECONDS * SAMPLE_RATE).toInt()
 
         fun start(context: Context) {
             val intent = Intent(context, EarService::class.java)
@@ -175,6 +200,15 @@ class EarService : Service() {
         }
         val chunk = ShortArray(SAMPLE_RATE / 10)          // a tenth of a second
         val burst = ArrayList<Short>()
+        /* The room's last second and a half, kept so the front of a
+         * sentence is never lost. Only ever 24,000 numbers in memory. */
+        val preRoll = ArrayDeque<Short>(PRE_ROLL)
+        fun preRollPush(arr: ShortArray, count: Int) {
+            for (i in 0 until count) {
+                if (preRoll.size >= PRE_ROLL) preRoll.removeFirst()
+                preRoll.addLast(arr[i])
+            }
+        }
         var loud = 0
         var quiet = 0
         var hearing = false
@@ -188,6 +222,9 @@ class EarService : Service() {
 
                 if (speaking) {                            // she is talking: ignore the room
                     loud = 0
+                    /* Her own words must not become the next burst's
+                     * pre-roll, or she wakes herself. */
+                    preRoll.clear()
                     if (hearing) { hearing = false; burst.clear() }
                     continue
                 }
@@ -210,11 +247,21 @@ class EarService : Service() {
                         quiet = 0
                         began = System.currentTimeMillis()
                         burst.clear()
+                        /* THE WORDS BEFORE THE NOISE ARE PART OF THE
+                         * SENTENCE. "Hattie" is spoken, and only then is the
+                         * room loud enough to wake the recorder - so the
+                         * sentence is built from what was already in memory,
+                         * then this frame. Without this, every burst begins
+                         * one word late and her name is the word that goes. */
+                        burst.addAll(preRoll)
                         burst.addAll(chunk.take(read))
+                        preRoll.clear()
                     }
                 } else {
                     loud = 0
                 }
+
+                if (!hearing) preRollPush(chunk, read)
             }
         } catch (e: Exception) {
             notice("Listening stopped: " + (e.message ?: "unknown"))
