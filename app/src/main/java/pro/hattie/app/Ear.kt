@@ -354,13 +354,15 @@ class EarService : Service() {
 }
 
 /**
- * A tablet that has been switched off at the wall comes back listening.
- * That is the difference between an appliance and a gadget.
+ * THERE IS NO BOOT RECEIVER ANY MORE, AND THAT IS DELIBERATE.
+ *
+ * It existed to bring the background ear back after a power cut. The ear and
+ * her page cannot both hold the microphone — Android gives it to one caller
+ * and answers the other with NotReadableError — so the page is now the only
+ * listener, and starting a service at boot to take the microphone away from
+ * it would recreate the fault every time the tablet was switched on.
+ *
+ * EarService is kept in this file rather than deleted: if background
+ * listening is ever wanted back, it returns as a choice — the page's room
+ * mode off, the service on — and never as two things at once.
  */
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
-        val house = House(context)
-        if (house.configured) EarService.start(context)
-    }
-}

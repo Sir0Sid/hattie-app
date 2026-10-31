@@ -83,7 +83,6 @@ class MainActivity : Activity() {
         web?.onResume()
         if (house.configured) goFullScreen()   /* a swipe can bring the bars back */
         if (house.configured) {
-            EarService.start(this)
             rememberThisDevice()      /* until somebody has signed in on it */
         }
     }
@@ -206,6 +205,14 @@ class MainActivity : Activity() {
 
     // ── state 2: her, on the wall ───────────────────────────────────
     private fun showHouse() {
+        /* THE PAGE OWNS THE MICROPHONE. One microphone, one owner: the ear
+         * service and the page both opening it is exactly what produced
+         * "the microphone was refused (NotReadableError)" - Android will not
+         * give the same device to both. The service was built when a page
+         * could not have a microphone at all; that stopped being true when
+         * the box got https. Anything still running from an earlier version
+         * is stopped here before the page asks for anything. */
+        EarService.stop(this)
         val view = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -379,10 +386,8 @@ class MainActivity : Activity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 && grantResults.isNotEmpty()
-            && grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
-            EarService.start(this)
-        }
+        /* Nothing to start. The permission is what her page needs before it
+         * may ask for the microphone itself; the app no longer listens
+         * behind the page's back, because it cannot do both. */
     }
 }

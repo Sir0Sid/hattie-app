@@ -73,13 +73,10 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <receiver android:name=".BootReceiver" android:exported="true">
-            <intent-filter android:priority="999">
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <!-- Some tablets (and the HTC/LG builds in particular) send
-                     this instead, or as well. Harmless where it never comes. -->
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
+        <!-- The microphone belongs to her page. The boot receiver went on
+             31 Oct 2026: it existed to start a background AudioRecord after
+             a power cut, and a background AudioRecord plus the WebView cannot
+             both hold the microphone - the loser is her page, which reports
+             NotReadableError and cannot hear anybody. -->
     </application>
 </manifest>
