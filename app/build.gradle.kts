@@ -17,12 +17,8 @@ android {
         /* BUMPED ON EVERY BUILD, and shown on the tablet: a notification
          * that cannot tell you which build it is has cost us a round trip
          * already, because the download page can be a version behind. */
-        minSdk = 26
-        targetSdk = 34
-        /* BUMPED ON EVERY BUILD, and shown on the tablet … */
-        versionCode = 10
-        versionName = "1.9"
-    
+        versionCode = 9
+        versionName = "1.8"
     }
 
     buildTypes {
@@ -56,4 +52,3 @@ dependencies {
     /* Vosk's native side is reached through JNA. */
     implementation("net.java.dev.jna:jna:5.13.0@aar")
 }
-
