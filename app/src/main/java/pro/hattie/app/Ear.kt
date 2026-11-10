@@ -194,6 +194,12 @@ class EarService : Service() {
      * A tablet that will not open VOICE_COMMUNICATION must still have ears -
      * a quieter her is better than a deaf one.
      */
+    /* Which profile the microphone actually opened with, for the
+       notification: "comm" is the room profile, "mic" the plain fallback.
+       Written on 10 Nov 2026 because "is she using the tablet's microphone
+       at all?" could not be answered from the tablet, only guessed at. */
+    @Volatile private var micSource = "?"
+
     private fun openMicrophone(bufferSize: Int): AudioRecord? {
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -216,7 +222,11 @@ class EarService : Service() {
             } catch (e: Throwable) {
                 null
             }
-            if (r != null && r.state == AudioRecord.STATE_INITIALIZED) return r
+            if (r != null && r.state == AudioRecord.STATE_INITIALIZED) {
+                micSource = if (source == MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    "comm" else "mic"
+                return r
+            }
             try { r?.release() } catch (e: Throwable) { }
         }
         return null
@@ -265,6 +275,15 @@ class EarService : Service() {
         var began = 0L
 
         record.startRecording()
+        /* THE LEVEL, ON THE TABLET. Every ~1.5 seconds the notification says
+           which microphone opened and how loud the room is. peak 0.10 is a
+           quiet room, 0.40 is speech at a metre. If it reads 0.00 while you
+           talk, the microphone is delivering silence - permission, another
+           app holding it, or hardware - and no amount of gain will help.
+           Added 10 Nov 2026, because this question was being answered by
+           guessing at three devices in turn. */
+        var diagMax = 0
+        var diagTicks = 0
         try {
             while (running) {
                 val read = record.read(chunk, 0, chunk.size)
@@ -280,6 +299,13 @@ class EarService : Service() {
                 }
 
                 val peak = peakOf(chunk, read)
+                if (peak > diagMax) diagMax = peak
+                if (++diagTicks >= 15) {                   /* a second and a half */
+                    diagTicks = 0
+                    val shown = String.format(java.util.Locale.UK, "%.2f", diagMax)
+                    notice("Listening (" + micSource + ") · peak " + shown)
+                    diagMax = 0
+                }
                 if (hearing) {
                     burst.addAll(chunk.take(read))
                     if (peak < QUIET) quiet++ else quiet = 0
