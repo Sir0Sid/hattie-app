@@ -79,8 +79,40 @@ object Keyword {
      * carry the previous sentence's state into this one, and the cost of
      * creating one is nothing next to the model that is already in memory.
      */
+    /**
+     * Lift the burst to a level the recogniser can work with, and report
+     * how quiet it was.
+     *
+     * WHY THIS IS HERE AND NOT ON THE BOX. Measured on 9 Nov 2026, a foot
+     * from the tablet: peak 0.11-0.14, six times quieter than a microphone
+     * should be. The box now lifts a quiet burst before whisper - but that
+     * happens AFTER this filter, and a quiet burst was being thrown away
+     * here, so nothing ever reached the box to be lifted. She only answered
+     * when Simon raised his voice, which is exactly the symptom: the gate
+     * was failing, not the ears.
+     *
+     * Only ever upward, never more than 8x, and silence is left alone.
+     */
+    private fun boost(pcm: ShortArray): ShortArray {
+        var peak = 0
+        for (v in pcm) { val a = if (v < 0) -v else v; if (a > peak) peak = a }
+        val p = peak / 32768.0
+        if (p < 0.01) return pcm                      /* silence stays silence */
+        var gain = 0.75 / p
+        if (gain <= 1.05) return pcm
+        if (gain > 8.0) gain = 8.0
+        val out = ShortArray(pcm.size)
+        for (i in pcm.indices) {
+            var x = (pcm[i] / 32768.0) * gain
+            if (x > 0.97) x = 0.97 else if (x < -0.97) x = -0.97
+            out[i] = (x * 32767).toInt().toShort()
+        }
+        return out
+    }
+
     fun containsName(pcm: ShortArray): Boolean {
         val m = model ?: return true          /* not ready: do not filter */
+        val heard = boost(pcm)                /* a quiet room is not a silence */
         val rec = try {
             Recognizer(m, EAR_RATE, GRAMMAR)
         } catch (e: Throwable) {
@@ -89,9 +121,9 @@ object Keyword {
         return try {
             val block = 3200                    /* a fifth of a second */
             var at = 0
-            while (at < pcm.size) {
-                val n = minOf(block, pcm.size - at)
-                rec.acceptWaveForm(pcm.copyOfRange(at, at + n), n)
+            while (at < heard.size) {
+                val n = minOf(block, heard.size - at)
+                rec.acceptWaveForm(heard.copyOfRange(at, at + n), n)
                 at += n
             }
             val text = (runCatching { rec.finalResult }.getOrNull() ?: "").lowercase()

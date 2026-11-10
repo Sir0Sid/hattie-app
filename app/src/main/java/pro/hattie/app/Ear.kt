@@ -189,16 +189,49 @@ class EarService : Service() {
      * speaking (a microphone and a speaker in one room hear each other), and
      * one burst is one sentence, not a monologue.
      */
+    /**
+     * The room profile first, and the old one only if the device refuses.
+     * A tablet that will not open VOICE_COMMUNICATION must still have ears -
+     * a quieter her is better than a deaf one.
+     */
+    private fun openMicrophone(bufferSize: Int): AudioRecord? {
+        for (source in intArrayOf(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                MediaRecorder.AudioSource.MIC)) {
+            val r = try {
+                AudioRecord(source, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT, bufferSize)
+            } catch (e: Throwable) {
+                null
+            }
+            if (r != null && r.state == AudioRecord.STATE_INITIALIZED) return r
+            try { r?.release() } catch (e: Throwable) { }
+        }
+        return null
+    }
+
     private fun listenLoop() {
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
         val bufferSize = maxOf(minBuffer, SAMPLE_RATE) * 2
-        val record = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
-        )
-        if (record.state != AudioRecord.STATE_INITIALIZED) {
+        /* FAR-FIELD, NOT CLOSE-TALK.
+           This was VOICE_RECOGNITION, which is the profile for dictating with
+           the tablet in your hand: flat, no automatic gain. In a room it
+           measured 0.11-0.14 peak from a foot and less beyond it, and Simon
+           had to raise his voice to be heard.
+
+           VOICE_COMMUNICATION is the profile built for a device in a room: it
+           enables the microphone array where the tablet has one, applies
+           automatic gain so quiet speech arrives at a usable level, and
+           cancels the echo of her own speaker - which also stops her hearing
+           her own sentence. That last part matters more here than anywhere
+           else, because the same device plays her voice.
+
+           MIC and UNPROCESSED were the alternatives; both are raw and would
+           leave the level problem where it started. Measured 10 Nov 2026. */
+        val record = openMicrophone(bufferSize)
+        if (record == null) {
             notice("The microphone could not be opened on this tablet.")
             stopSelf()
             return
