@@ -18,7 +18,7 @@ android {
          * that cannot tell you which build it is has cost us a round trip
          * already, because the download page can be a version behind. */
         versionCode = 8
-        versionName = "1.7"
+        versionName = "1.8"
     }
 
     buildTypes {
@@ -52,8 +52,4 @@ dependencies {
     /* Vosk's native side is reached through JNA. */
     implementation("net.java.dev.jna:jna:5.13.0@aar")
 }
-defaultConfig {
-    applicationId = "pro.hattie.app"
-    versionCode = 9          // a whole number that must go UP every build
-    versionName = "1.8"      // the text you see in the notification
-}
+
