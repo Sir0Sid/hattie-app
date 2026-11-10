@@ -282,7 +282,11 @@ class EarService : Service() {
            app holding it, or hardware - and no amount of gain will help.
            Added 10 Nov 2026, because this question was being answered by
            guessing at three devices in turn. */
-        var diagMax = 0
+        /* Double, because peakOf() returns one. An Int here does not compile:
+           "peak > diagMax" compares a Double with an Int, which Kotlin refuses.
+           That is what failed two CI runs on 10 Nov 2026 - and a hand-attached
+           old APK then made the release look successful. */
+        var diagMax = 0.0
         var diagTicks = 0
         try {
             while (running) {
@@ -304,7 +308,7 @@ class EarService : Service() {
                     diagTicks = 0
                     val shown = String.format(java.util.Locale.UK, "%.2f", diagMax)
                     notice("Listening (" + micSource + ") · peak " + shown)
-                    diagMax = 0
+                    diagMax = 0.0
                 }
                 if (hearing) {
                     burst.addAll(chunk.take(read))
