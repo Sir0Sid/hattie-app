@@ -17,8 +17,8 @@ android {
         /* BUMPED ON EVERY BUILD, and shown on the tablet: a notification
          * that cannot tell you which build it is has cost us a round trip
          * already, because the download page can be a version behind. */
-        versionCode = 9
-        versionName = "1.8"
+        versionCode = 10
+        versionName = "1.9"
     }
 
     buildTypes {
