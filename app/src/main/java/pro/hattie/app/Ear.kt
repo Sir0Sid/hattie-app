@@ -195,12 +195,24 @@ class EarService : Service() {
      * a quieter her is better than a deaf one.
      */
     private fun openMicrophone(bufferSize: Int): AudioRecord? {
+        val format = AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .setSampleRate(SAMPLE_RATE)
+            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+            .build()
         for (source in intArrayOf(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 MediaRecorder.AudioSource.MIC)) {
             val r = try {
-                AudioRecord(source, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
-                            AudioFormat.ENCODING_PCM_16BIT, bufferSize)
+                /* The BUILDER, not the five-argument constructor: that form
+                 * is deprecated, and on compileSdk 34 the compiler is within
+                 * its rights to refuse it. This one is the documented route
+                 * and exists from API 23, well below the app's minimum. */
+                AudioRecord.Builder()
+                    .setAudioSource(source)
+                    .setAudioFormat(format)
+                    .setBufferSizeInBytes(bufferSize)
+                    .build()
             } catch (e: Throwable) {
                 null
             }

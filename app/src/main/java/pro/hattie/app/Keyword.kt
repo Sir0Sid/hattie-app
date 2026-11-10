@@ -94,8 +94,12 @@ object Keyword {
      * Only ever upward, never more than 8x, and silence is left alone.
      */
     private fun boost(pcm: ShortArray): ShortArray {
+        /* abs(), not "if (v < 0) -v else v": the two branches would be an Int
+           and a Short, so Kotlin infers the common supertype
+           {Comparable<*> & Number} and refuses to assign it to an Int. It
+           compiled in my head and failed on the runner, 10 Nov 2026. */
         var peak = 0
-        for (v in pcm) { val a = if (v < 0) -v else v; if (a > peak) peak = a }
+        for (v in pcm) { val a = kotlin.math.abs(v.toInt()); if (a > peak) peak = a }
         val p = peak / 32768.0
         if (p < 0.01) return pcm                      /* silence stays silence */
         var gain = 0.75 / p
