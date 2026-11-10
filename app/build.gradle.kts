@@ -17,8 +17,9 @@ android {
         /* BUMPED ON EVERY BUILD, and shown on the tablet: a notification
          * that cannot tell you which build it is has cost us a round trip
          * already, because the download page can be a version behind. */
-        versionCode = 8
-        versionName = "1.8"
+        applicationId = "pro.hattie.app"
+    versionCode = 9          // a whole number that must go UP every build
+    versionName = "1.8"
     }
 
     buildTypes {
