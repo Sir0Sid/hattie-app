@@ -45,10 +45,21 @@ class EarService : Service() {
         const val CHANNEL_ID = "hattie-ear"
         const val NOTIFICATION_ID = 41
 
-        /* The four numbers that tune it, in one place, matching the four on
-         * her page. See voice-services/README.md, section 8. */
-        const val LOUD = 0.055
-        const val QUIET = 0.030
+        /* THE GATES ARE NOW RELATIVE TO THE ROOM, not fixed numbers.
+         *
+         * They were 0.055 and 0.030, chosen when we assumed a healthy
+         * microphone. On the Galaxy Tab a normal voice at two metres peaks
+         * around 0.05 - BELOW the gate - so the ear never opened, and the
+         * only way to be heard was to raise your voice. The tablet was not
+         * deaf; it was told to listen only for shouting.
+         *
+         * These are the FLOOR and the multipliers: the gate is the room's
+         * own noise plus a margin, so a quiet room opens at a whisper and a
+         * noisy one demands more. LOUD/QUIET names are kept because the rest
+         * of the loop reads them. 10 Nov 2026. */
+        const val FLOOR = 0.010          // never open a burst below this
+        const val LOUD_MULT = 3.0        // speech is this much above the room
+        const val QUIET_MULT = 2.0       // and it ends when it falls back
         const val FRAMES_TO_START = 3
         const val FRAMES_TO_END = 8
 
@@ -206,9 +217,18 @@ class EarService : Service() {
             .setSampleRate(SAMPLE_RATE)
             .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
             .build()
+        /* RAW MIC FIRST, as an A/B test on 10 Nov 2026. VOICE_COMMUNICATION
+           applies noise suppression and a high-pass filter: good for a phone
+           call, and quite capable of removing a breathy "H" from a quiet
+           voice two metres away. MIC is unprocessed, so nothing is taken
+           away - but nothing is lifted either.
+
+           The notification says which one opened ("mic" or "comm") and the
+           peak beside it, so the comparison is one sentence each, not a
+           guess. If "mic" is no louder, this goes back the way it was. */
         for (source in intArrayOf(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                MediaRecorder.AudioSource.MIC)) {
+                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION)) {
             val r = try {
                 /* The BUILDER, not the five-argument constructor: that form
                  * is deprecated, and on compileSdk 34 the compiler is within
@@ -286,6 +306,9 @@ class EarService : Service() {
            "peak > diagMax" compares a Double with an Int, which Kotlin refuses.
            That is what failed two CI runs on 10 Nov 2026 - and a hand-attached
            old APK then made the release look successful. */
+        /* It starts assuming a quiet room; the first few seconds of silence
+           settle it on this room's real floor. */
+        var roomLevel = FLOOR
         var diagMax = 0.0
         var diagTicks = 0
         try {
@@ -310,9 +333,18 @@ class EarService : Service() {
                     notice("Listening (" + micSource + ") · peak " + shown)
                     diagMax = 0.0
                 }
+                /* The room's own level, followed slowly: down quickly when
+                   it is quieter, up slowly so a cough cannot raise the gate
+                   for the next sentence. */
+                if (!hearing && peak < roomLevel * 2.0) {
+                    roomLevel = roomLevel * 0.995 + peak * 0.005
+                }
+                val gateLoud  = maxOf(FLOOR, roomLevel * LOUD_MULT)
+                val gateQuiet = maxOf(FLOOR * 0.8, roomLevel * QUIET_MULT)
+
                 if (hearing) {
                     burst.addAll(chunk.take(read))
-                    if (peak < QUIET) quiet++ else quiet = 0
+                    if (peak < gateQuiet) quiet++ else quiet = 0
                     val seconds = (System.currentTimeMillis() - began) / 1000.0
                     if (seconds >= MAX_SECONDS || quiet >= FRAMES_TO_END) {
                         hearing = false
@@ -320,7 +352,7 @@ class EarService : Service() {
                         burst.clear()
                         sendBurst(pcm)
                     }
-                } else if (peak > LOUD) {
+                } else if (peak > gateLoud) {
                     if (++loud >= FRAMES_TO_START) {
                         loud = 0
                         hearing = true
